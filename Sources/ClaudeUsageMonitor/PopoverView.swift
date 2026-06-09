@@ -8,6 +8,9 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            if usageStore.isPaused {
+                pausedBanner
+            }
             Divider()
             percentSection
             Divider()
@@ -20,6 +23,20 @@ struct PopoverView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(settingsStore: settingsStore)
         }
+    }
+
+    private var pausedBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pause.circle.fill").foregroundColor(.orange)
+            Text(usageStore.pausedReason ?? "已暂停更新")
+                .font(.caption)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(8)
+        .background(Color.orange.opacity(0.12))
+        .cornerRadius(6)
     }
 
     private var header: some View {

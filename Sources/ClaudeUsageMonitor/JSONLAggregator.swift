@@ -1,6 +1,6 @@
 import Foundation
 
-struct TokenTotals: Equatable {
+struct TokenTotals: Equatable, Codable {
     var input: Int = 0
     var output: Int = 0
     var cacheCreation: Int = 0
@@ -15,7 +15,7 @@ struct TokenTotals: Equatable {
     }
 }
 
-struct AggregatedUsage: Equatable {
+struct AggregatedUsage: Equatable, Codable {
     var today: TokenTotals = .init()
     var week: TokenTotals = .init()       // 最近 7 天滚动
     var fetchedAt: Date = Date()

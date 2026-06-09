@@ -1,6 +1,6 @@
 import Foundation
 
-struct UsageSnapshot: Equatable {
+struct UsageSnapshot: Equatable, Codable {
     var sessionPercent: Int?
     var sessionResetText: String?
     var weekAllPercent: Int?
@@ -112,6 +112,19 @@ enum UsageService {
             return c
         }
         return nil
+    }
+
+    /// 判断当前 Claude 是否走官方订阅（base URL 是 api.anthropic.com 或未设置）
+    /// 第三方 provider 时返回 false，调用方应跳过刷新、显示上次官方数据
+    static func isOfficialProvider() -> Bool {
+        let settingsEnv = readClaudeSettingsEnv()
+        let envBase = ProcessInfo.processInfo.environment["ANTHROPIC_BASE_URL"]
+        let baseUrl = (settingsEnv["ANTHROPIC_BASE_URL"] ?? envBase ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if baseUrl.isEmpty { return true }
+        // 官方 host 白名单
+        return baseUrl.contains("api.anthropic.com")
     }
 
     private static func readClaudeSettingsEnv() -> [String: String] {

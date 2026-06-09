@@ -33,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateMenuBarTitle() }
             .store(in: &cancellables)
+        usageStore.$isPaused
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateMenuBarTitle() }
+            .store(in: &cancellables)
         settingsStore.$settings
             .receive(on: RunLoop.main)
             .sink { [weak self] settings in
@@ -61,37 +65,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateMenuBarTitle() {
         guard let button = statusItem.button else { return }
         let s = settingsStore.settings
-        let font = NSFont.menuBarFont(ofSize: 0)
-        let isDark = isMenubarDark()
 
-        func seg(_ prefix: String, _ percent: Int?) -> NSAttributedString {
-            let text = s.menubarShowPercent ? "\(prefix) \(Fmt.percent(percent))" : prefix
-            return NSAttributedString(string: text, attributes: [
-                .foregroundColor: gradientColor(percent: percent, isDark: isDark),
-                .font: font
-            ])
-        }
-        let sepAttr = NSAttributedString(string: " · ", attributes: [
-            .font: font,
-            .foregroundColor: NSColor.tertiaryLabelColor
-        ])
-
-        let attr = NSMutableAttributedString()
+        struct Cell { let label: String; let percent: Int? }
+        var cells: [Cell] = []
         switch s.menubarMetric {
         case .session:
-            attr.append(seg("5h", usageStore.usage.sessionPercent))
+            cells.append(Cell(label: "5h", percent: usageStore.usage.sessionPercent))
         case .weekAll:
-            attr.append(seg("周", usageStore.usage.weekAllPercent))
+            cells.append(Cell(label: "周", percent: usageStore.usage.weekAllPercent))
         case .weekSonnet:
-            attr.append(seg("Son", usageStore.usage.weekSonnetPercent))
+            cells.append(Cell(label: "Son", percent: usageStore.usage.weekSonnetPercent))
         case .all:
-            attr.append(seg("5h", usageStore.usage.sessionPercent))
-            attr.append(sepAttr)
-            attr.append(seg("周", usageStore.usage.weekAllPercent))
+            cells.append(Cell(label: "5h", percent: usageStore.usage.sessionPercent))
+            cells.append(Cell(label: "周",  percent: usageStore.usage.weekAllPercent))
         }
-        button.image = nil
+
+        button.attributedTitle = NSAttributedString()
         button.title = ""
-        button.attributedTitle = attr
+        button.image = renderTwoLineImage(cells: cells.map { ($0.label, $0.percent) },
+                                          dimmed: usageStore.isPaused)
+        button.imagePosition = .imageOnly
+    }
+
+    /// 两行布局：上行 label 小字灰、下行 percent 大字渐变色。透明背景。
+    private func renderTwoLineImage(cells: [(label: String, percent: Int?)], dimmed: Bool) -> NSImage {
+        let isDark = isMenubarDark()
+        let alpha: CGFloat = dimmed ? 0.55 : 1.0
+
+        let labelFont = NSFont.systemFont(ofSize: 8.5, weight: .medium)
+        let percentFont = NSFont.systemFont(ofSize: 11.5, weight: .bold)
+
+        // 标签灰色，跟随菜单栏外观
+        let labelColor: NSColor = (isDark
+            ? NSColor.white.withAlphaComponent(0.62 * alpha)
+            : NSColor.black.withAlphaComponent(0.55 * alpha))
+
+        let cellGap: CGFloat = 7
+        let menubarHeight: CGFloat = 22
+
+        // 测量每个 cell 宽度（取标签和百分比的较大值）
+        var cellSizes: [(label: NSSize, percent: NSSize, cellWidth: CGFloat)] = []
+        for cell in cells {
+            let labelAttr = NSAttributedString(string: cell.label, attributes: [.font: labelFont])
+            let percentText = cell.percent.map { "\($0)%" } ?? "--%"
+            let percentAttr = NSAttributedString(string: percentText, attributes: [.font: percentFont])
+            let lsz = labelAttr.size()
+            let psz = percentAttr.size()
+            cellSizes.append((lsz, psz, max(lsz.width, psz.width)))
+        }
+        let totalWidth = cellSizes.reduce(0) { $0 + $1.cellWidth } + cellGap * CGFloat(max(0, cells.count - 1))
+
+        let image = NSImage(size: NSSize(width: max(totalWidth, 1), height: menubarHeight), flipped: false) { _ in
+            var x: CGFloat = 0
+            for (i, cell) in cells.enumerated() {
+                let (lsz, psz, cw) = cellSizes[i]
+                let labelAttr = NSAttributedString(string: cell.label, attributes: [
+                    .font: labelFont,
+                    .foregroundColor: labelColor
+                ])
+                let percentText = cell.percent.map { "\($0)%" } ?? "--%"
+                let percentColor = self.gradientColor(percent: cell.percent, isDark: isDark)
+                    .withAlphaComponent(alpha)
+                let percentAttr = NSAttributedString(string: percentText, attributes: [
+                    .font: percentFont,
+                    .foregroundColor: percentColor
+                ])
+
+                // 上行 label（居中、底部 y≈12），下行 percent（居中、底部 y≈0）
+                let labelX = x + (cw - lsz.width) / 2
+                let percentX = x + (cw - psz.width) / 2
+                labelAttr.draw(at: NSPoint(x: labelX, y: 12))
+                percentAttr.draw(at: NSPoint(x: percentX, y: -1))
+
+                x += cw + cellGap
+            }
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     /// 绿(120°)→红(0°) 渐变；自动跟随菜单栏外观调整亮度/饱和度保证对比
