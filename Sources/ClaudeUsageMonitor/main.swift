@@ -61,101 +61,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateMenuBarTitle() {
         guard let button = statusItem.button else { return }
         let s = settingsStore.settings
+        let font = NSFont.menuBarFont(ofSize: 0)
+        let isDark = isMenubarDark()
 
-        struct Seg { let text: String; let color: NSColor }
-        var segs: [Seg] = []
+        func seg(_ prefix: String, _ percent: Int?) -> NSAttributedString {
+            let text = s.menubarShowPercent ? "\(prefix) \(Fmt.percent(percent))" : prefix
+            return NSAttributedString(string: text, attributes: [
+                .foregroundColor: gradientColor(percent: percent, isDark: isDark),
+                .font: font
+            ])
+        }
+        let sepAttr = NSAttributedString(string: " · ", attributes: [
+            .font: font,
+            .foregroundColor: NSColor.tertiaryLabelColor
+        ])
+
+        let attr = NSMutableAttributedString()
         switch s.menubarMetric {
         case .session:
-            segs.append(Seg(text: segText("5h", usageStore.usage.sessionPercent),
-                            color: pillColor(palette: .session, percent: usageStore.usage.sessionPercent)))
+            attr.append(seg("5h", usageStore.usage.sessionPercent))
         case .weekAll:
-            segs.append(Seg(text: segText("周", usageStore.usage.weekAllPercent),
-                            color: pillColor(palette: .week, percent: usageStore.usage.weekAllPercent)))
+            attr.append(seg("周", usageStore.usage.weekAllPercent))
         case .weekSonnet:
-            segs.append(Seg(text: segText("Son", usageStore.usage.weekSonnetPercent),
-                            color: pillColor(palette: .week, percent: usageStore.usage.weekSonnetPercent)))
+            attr.append(seg("Son", usageStore.usage.weekSonnetPercent))
         case .all:
-            segs.append(Seg(text: segText("5h", usageStore.usage.sessionPercent),
-                            color: pillColor(palette: .session, percent: usageStore.usage.sessionPercent)))
-            segs.append(Seg(text: segText("周", usageStore.usage.weekAllPercent),
-                            color: pillColor(palette: .week, percent: usageStore.usage.weekAllPercent)))
+            attr.append(seg("5h", usageStore.usage.sessionPercent))
+            attr.append(sepAttr)
+            attr.append(seg("周", usageStore.usage.weekAllPercent))
         }
-
+        button.image = nil
         button.title = ""
-        button.attributedTitle = NSAttributedString()
-        button.image = renderPillImage(segments: segs.map { ($0.text, $0.color) })
-        button.imagePosition = .imageOnly
+        button.attributedTitle = attr
     }
 
-    private func segText(_ prefix: String, _ percent: Int?) -> String {
-        if settingsStore.settings.menubarShowPercent {
-            return "\(prefix) \(Fmt.percent(percent))"
-        }
-        return prefix
-    }
-
-    private enum ColorPalette {
-        case session  // 5h：青→红
-        case week     // 周  ：紫→橙红
-        var hueStart: CGFloat { self == .session ? 200 : 280 }
-        var hueEnd: CGFloat   { self == .session ? 0   : 20  }
-    }
-
-    /// 高饱和填充色，作为药丸底色；白字在上面任何壁纸下都清晰
-    private func pillColor(palette: ColorPalette, percent: Int?) -> NSColor {
+    /// 绿(120°)→红(0°) 渐变；自动跟随菜单栏外观调整亮度/饱和度保证对比
+    private func gradientColor(percent: Int?, isDark: Bool) -> NSColor {
         guard let raw = percent else {
-            return NSColor.systemGray
+            return isDark ? .white : .black
         }
         let p = CGFloat(max(0, min(100, raw))) / 100.0
-        // ease-in 曲线，20/50/80 后告警感更强
-        let t = pow(p, 0.75)
-        var start = palette.hueStart
-        var end = palette.hueEnd
-        if abs(end - start) > 180 {
-            if start < end { start += 360 } else { end += 360 }
-        }
-        var hue = start + (end - start) * t
-        hue = hue.truncatingRemainder(dividingBy: 360)
-        if hue < 0 { hue += 360 }
-        return NSColor(hue: hue / 360.0, saturation: 0.85, brightness: 0.85, alpha: 1.0)
+        // ease-in：低 % 保持绿，超过 50% 后快速变红
+        let t = pow(p, 0.85)
+        let hue: CGFloat = (120 - 120 * t) / 360.0
+        // 深色菜单栏：高亮高饱和；浅色：降亮度提对比
+        let sat: CGFloat = isDark ? 0.80 : 0.95
+        let bri: CGFloat = isDark ? 1.00 : 0.55
+        return NSColor(hue: hue, saturation: sat, brightness: bri, alpha: 1.0)
     }
 
-    /// 把若干段文字渲染成「圆角药丸 + 白字」的复合图，确保任何壁纸/菜单栏背景下都清晰
-    private func renderPillImage(segments: [(text: String, color: NSColor)]) -> NSImage {
-        let font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        let textAttrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: NSColor.white
-        ]
-        let padH: CGFloat = 5
-        let padV: CGFloat = 1
-        let gap: CGFloat = 3
-        let cornerRadius: CGFloat = 4
-        let menubarHeight: CGFloat = 18
-
-        let sizes = segments.map { NSAttributedString(string: $0.text, attributes: textAttrs).size() }
-        let totalWidth = sizes.reduce(0) { $0 + $1.width + padH * 2 } + gap * CGFloat(max(0, segments.count - 1))
-        let totalHeight = menubarHeight
-
-        let image = NSImage(size: NSSize(width: max(totalWidth, 1), height: totalHeight), flipped: false) { _ in
-            var x: CGFloat = 0
-            for (i, seg) in segments.enumerated() {
-                let textSize = sizes[i]
-                let segWidth = textSize.width + padH * 2
-                let segHeight = textSize.height + padV * 2
-                let segY = (totalHeight - segHeight) / 2
-                let rect = NSRect(x: x, y: segY, width: segWidth, height: segHeight)
-                seg.color.setFill()
-                let path = NSBezierPath(roundedRect: rect, xRadius: cornerRadius, yRadius: cornerRadius)
-                path.fill()
-                let attr = NSAttributedString(string: seg.text, attributes: textAttrs)
-                attr.draw(at: NSPoint(x: x + padH, y: segY + padV))
-                x += segWidth + gap
-            }
-            return true
+    private func isMenubarDark() -> Bool {
+        if let appearance = statusItem.button?.effectiveAppearance {
+            return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         }
-        image.isTemplate = false  // 保持彩色，不被系统按 template 染色
-        return image
+        return NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     }
 
     @objc private func togglePopover(_ sender: Any?) {

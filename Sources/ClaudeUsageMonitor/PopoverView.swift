@@ -28,13 +28,16 @@ struct PopoverView: View {
                 .font(.headline)
             Spacer()
             Button(action: { usageStore.refresh() }) {
-                Image(systemName: "arrow.clockwise")
-                    .frame(width: 18, height: 18)
-                    .rotationEffect(.degrees(usageStore.isRefreshing ? 360 : 0))
-                    .animation(usageStore.isRefreshing
-                               ? .linear(duration: 0.8).repeatForever(autoreverses: false)
-                               : .default,
-                               value: usageStore.isRefreshing)
+                ZStack {
+                    if usageStore.isRefreshing {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .frame(width: 18, height: 18)
             }
             .buttonStyle(.borderless)
             .help("立即刷新")
@@ -61,12 +64,12 @@ struct PopoverView: View {
                 percentColumn(title: "5h",
                               percent: usageStore.usage.sessionPercent,
                               reset: usageStore.usage.sessionResetText,
-                              color: tintForPercent(usageStore.usage.sessionPercent, palette: .session))
-                Divider().frame(height: 70)
+                              color: tintForPercent(usageStore.usage.sessionPercent))
+                Divider().frame(height: 80)
                 percentColumn(title: "周",
                               percent: usageStore.usage.weekAllPercent,
                               reset: usageStore.usage.weekAllResetText,
-                              color: tintForPercent(usageStore.usage.weekAllPercent, palette: .week))
+                              color: tintForPercent(usageStore.usage.weekAllPercent))
             }
             if settingsStore.settings.showSonnetWeek {
                 HStack {
@@ -119,15 +122,13 @@ struct PopoverView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    enum Palette { case session, week }
-
-    private func tintForPercent(_ percent: Int?, palette: Palette) -> Color {
+    private func tintForPercent(_ percent: Int?) -> Color {
         guard let raw = percent else { return .gray }
         let p = Double(max(0, min(100, raw))) / 100.0
-        let t = pow(p, 0.75)
-        let (h0, h1): (Double, Double) = palette == .session ? (200, 360) : (280, 380)
-        let hue = (h0 + (h1 - h0) * t).truncatingRemainder(dividingBy: 360)
-        return Color(hue: hue / 360.0, saturation: 0.75, brightness: 0.85)
+        let t = pow(p, 0.85)
+        // 绿(120°) → 红(0°)
+        let hue = (120 - 120 * t) / 360.0
+        return Color(hue: hue, saturation: 0.80, brightness: 0.85)
     }
 
     private var tokenSection: some View {
