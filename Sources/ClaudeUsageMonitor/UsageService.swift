@@ -23,7 +23,9 @@ enum UsageService {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: bin)
-        process.arguments = ["-p", "/usage"]
+        // 纯文本模式 CLI 2.1+ 会吞掉 /usage 的百分比明细，只剩订阅提示
+        // JSON 模式把完整文本放在 result 字段里，必须用 JSON 解
+        process.arguments = ["-p", "/usage", "--output-format", "json"]
         var env = ProcessInfo.processInfo.environment
         let extraPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "\(NSHomeDirectory())/.local/bin"]
         let currentPath = env["PATH"] ?? ""
@@ -80,6 +82,7 @@ enum UsageService {
             let errOutput = String(data: errData, encoding: .utf8) ?? ""
             lock.unlock()
 
+            // 不管输出是 JSON 包还是纯文本，正则直接扫整段；兼容 \n 字面量和真换行
             snap.rawOutput = output + (errOutput.isEmpty ? "" : "\n[stderr]\n\(errOutput)")
             parse(output: output, into: &snap)
 
@@ -142,37 +145,32 @@ enum UsageService {
     }
 
     private static func parse(output: String, into snap: inout UsageSnapshot) {
-        // 输出形如：
-        // Current session: 36% used · resets Jun 9 at 7:10pm (Asia/Shanghai)
-        // Current week (all models): 48% used · resets Jun 14 at 11pm (Asia/Shanghai)
-        // Current week (Sonnet only): 13% used · resets Jun 14 at 11pm (Asia/Shanghai)
-        for raw in output.components(separatedBy: .newlines) {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            guard !line.isEmpty else { continue }
-            guard let percent = extractPercent(line) else { continue }
-            let reset = extractReset(line)
-            if line.contains("Current session") {
-                snap.sessionPercent = percent
-                snap.sessionResetText = reset
-            } else if line.contains("all models") {
-                snap.weekAllPercent = percent
-                snap.weekAllResetText = reset
-            } else if line.contains("Sonnet only") {
-                snap.weekSonnetPercent = percent
-                snap.weekSonnetResetText = reset
+        // 正则扫整段，兼容三种来源：纯文本、JSON 包（result 字段里的 \n 字面量）、stream-json
+        let (sp, sr) = matchSegment(in: output, marker: "Current session")
+        snap.sessionPercent = sp; snap.sessionResetText = sr
+        let (wp, wr) = matchSegment(in: output, marker: "all models")
+        snap.weekAllPercent = wp; snap.weekAllResetText = wr
+        let (np, nr) = matchSegment(in: output, marker: "Sonnet only")
+        snap.weekSonnetPercent = np; snap.weekSonnetResetText = nr
+    }
+
+    /// 匹配 "<marker>...<num>% used · resets <text>"，停在换行 / \\n 字面量 / 引号 / 句末
+    private static func matchSegment(in text: String, marker: String) -> (Int?, String?) {
+        let escaped = NSRegularExpression.escapedPattern(for: marker)
+        let pattern = escaped + #"[^\n\r"]{0,80}?(\d+)%[^\n\r"]*?resets ([^\n\r"\\]+)"#
+        guard let re = try? NSRegularExpression(pattern: pattern, options: []),
+              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else {
+            // 兜底：只抓百分比，没 reset 文本也行
+            let fallback = escaped + #"[^\n\r"]{0,80}?(\d+)%"#
+            if let re2 = try? NSRegularExpression(pattern: fallback, options: []),
+               let m2 = re2.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+               let pr = Range(m2.range(at: 1), in: text) {
+                return (Int(text[pr]), nil)
             }
+            return (nil, nil)
         }
-    }
-
-    private static func extractPercent(_ line: String) -> Int? {
-        // 匹配 "36%"
-        guard let range = line.range(of: #"(\d+)%"#, options: .regularExpression) else { return nil }
-        let s = line[range].dropLast()
-        return Int(s)
-    }
-
-    private static func extractReset(_ line: String) -> String? {
-        guard let r = line.range(of: "resets ") else { return nil }
-        return String(line[r.upperBound...]).trimmingCharacters(in: .whitespaces)
+        let percent = Range(m.range(at: 1), in: text).flatMap { Int(text[$0]) }
+        let reset = Range(m.range(at: 2), in: text).map { text[$0].trimmingCharacters(in: .whitespaces) }
+        return (percent, reset)
     }
 }

@@ -44,7 +44,7 @@ struct PopoverView: View {
             Text("Claude Usage")
                 .font(.headline)
             Spacer()
-            Button(action: { usageStore.refresh() }) {
+            Button(action: { usageStore.refresh(force: true) }) {
                 ZStack {
                     if usageStore.isRefreshing {
                         ProgressView()

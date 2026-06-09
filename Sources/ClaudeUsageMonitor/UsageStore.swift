@@ -46,20 +46,30 @@ final class UsageStore: ObservableObject {
         scheduleTimer()
     }
 
-    func refresh() {
-        Task { await reload() }
+    /// TTL 缓存：60s 内不重复触发 claude CLI（启动昂贵，约 1–3s）
+    /// 手动点刷新按钮 force=true 强制绕过
+    private let cacheTTL: TimeInterval = 60
+
+    func refresh(force: Bool = false) {
+        Task { await reload(force: force) }
     }
 
     private func scheduleTimer() {
         timer?.invalidate()
+        // 定时器走非 force 路径；若距上次刷新不足 TTL 会自动跳过
         let t = Timer(timeInterval: TimeInterval(intervalSeconds), repeats: true) { [weak self] _ in
-            self?.refresh()
+            self?.refresh(force: false)
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
-    private func reload() async {
+    private func reload(force: Bool) async {
+        // TTL 命中：直接返回缓存，不点亮 spinner、不动 claude CLI
+        if !force, let last = lastUpdated, Date().timeIntervalSince(last) < cacheTTL {
+            return
+        }
+
         isRefreshing = true
         defer { isRefreshing = false }
 
@@ -75,7 +85,22 @@ final class UsageStore: ObservableObject {
         async let u = Task.detached { UsageService.fetch() }.value
         async let t = Task.detached { JSONLAggregator.aggregate() }.value
         let (newUsage, newTokens) = await (u, t)
-        self.usage = newUsage
+
+        // 解析失败时保留上次百分比，避免菜单栏闪回 --%
+        var merged = newUsage
+        if merged.sessionPercent == nil, let last = self.usage.sessionPercent {
+            merged.sessionPercent = last
+            merged.sessionResetText = self.usage.sessionResetText
+        }
+        if merged.weekAllPercent == nil, let last = self.usage.weekAllPercent {
+            merged.weekAllPercent = last
+            merged.weekAllResetText = self.usage.weekAllResetText
+        }
+        if merged.weekSonnetPercent == nil, let last = self.usage.weekSonnetPercent {
+            merged.weekSonnetPercent = last
+            merged.weekSonnetResetText = self.usage.weekSonnetResetText
+        }
+        self.usage = merged
         self.tokens = newTokens
         self.lastUpdated = Date()
         persist()
