@@ -14,8 +14,6 @@ struct PopoverView: View {
             Divider()
             percentSection
             Divider()
-            tokenSection
-            Divider()
             footer
         }
         .padding(14)
@@ -129,7 +127,7 @@ struct PopoverView: View {
                 .progressViewStyle(.linear)
                 .tint(color)
             if let reset {
-                Text(reset)
+                Text("重置 \(reset)")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                     .lineLimit(2)
@@ -148,49 +146,6 @@ struct PopoverView: View {
         return Color(hue: hue, saturation: 0.80, brightness: 0.85)
     }
 
-    private var tokenSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if settingsStore.settings.showTodayTokens {
-                tokenRow(title: "今日", totals: usageStore.tokens.today)
-            }
-            if settingsStore.settings.showWeekTokens {
-                tokenRow(title: "近 7 天", totals: usageStore.tokens.week)
-            }
-        }
-    }
-
-    private func tokenRow(title: String, totals: TokenTotals) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(title).font(.subheadline).bold()
-                Spacer()
-                Text("总计 \(Fmt.tokens(totals.totalWithCache))")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            HStack(spacing: 12) {
-                stat("输入", totals.input)
-                stat("输出", totals.output)
-                if settingsStore.settings.showCacheHits {
-                    stat("缓存命中", totals.cacheRead)
-                    stat("缓存写入", totals.cacheCreation)
-                }
-            }
-            if settingsStore.settings.showCacheHits && (totals.cacheRead + totals.cacheCreation) > 0 {
-                Text(String(format: "缓存命中率 %.0f%%", totals.cacheHitRate * 100))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-
-    private func stat(_ label: String, _ value: Int) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.caption2).foregroundColor(.secondary)
-            Text(Fmt.tokens(value)).font(.caption).monospacedDigit()
-        }
-    }
-
     private var footer: some View {
         HStack {
             if let t = usageStore.lastUpdated {
@@ -199,9 +154,6 @@ struct PopoverView: View {
                     .foregroundColor(.secondary)
             }
             Spacer()
-            Text("扫描 \(usageStore.tokens.scannedEntries) 条")
-                .font(.caption2)
-                .foregroundColor(.secondary)
         }
     }
 }
@@ -221,12 +173,6 @@ struct SettingsView: View {
                 }
             }
             Toggle("菜单栏显示百分比数字", isOn: $settingsStore.settings.menubarShowPercent)
-
-            Divider()
-
-            Toggle("显示今日 token", isOn: $settingsStore.settings.showTodayTokens)
-            Toggle("显示近 7 天 token", isOn: $settingsStore.settings.showWeekTokens)
-            Toggle("显示缓存命中明细", isOn: $settingsStore.settings.showCacheHits)
             Toggle("显示本周 Sonnet 单独占比", isOn: $settingsStore.settings.showSonnetWeek)
 
             Divider()

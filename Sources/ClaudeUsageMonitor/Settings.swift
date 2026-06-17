@@ -4,9 +4,6 @@ struct AppSettings: Codable, Equatable {
     var refreshIntervalSeconds: Int = 60
     var menubarShowPercent: Bool = true
     var menubarMetric: MenubarMetric = .session
-    var showTodayTokens: Bool = true
-    var showWeekTokens: Bool = true
-    var showCacheHits: Bool = true
     var showSonnetWeek: Bool = true
 
     enum MenubarMetric: String, Codable, CaseIterable {

@@ -4,7 +4,6 @@ import Combine
 @MainActor
 final class UsageStore: ObservableObject {
     @Published private(set) var usage: UsageSnapshot
-    @Published private(set) var tokens: AggregatedUsage
     @Published private(set) var isRefreshing: Bool = false
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var isPaused: Bool = false
@@ -14,7 +13,6 @@ final class UsageStore: ObservableObject {
     private var intervalSeconds: Int = 60
 
     private let usageKey = "UsageStore.cachedUsage.v1"
-    private let tokensKey = "UsageStore.cachedTokens.v1"
     private let lastUpdatedKey = "UsageStore.lastUpdated.v1"
 
     init() {
@@ -25,18 +23,12 @@ final class UsageStore: ObservableObject {
         } else {
             self.usage = UsageSnapshot()
         }
-        if let data = ud.data(forKey: tokensKey),
-           let decoded = try? JSONDecoder().decode(AggregatedUsage.self, from: data) {
-            self.tokens = decoded
-        } else {
-            self.tokens = AggregatedUsage()
-        }
         self.lastUpdated = ud.object(forKey: lastUpdatedKey) as? Date
     }
 
     func start(intervalSeconds: Int) {
         self.intervalSeconds = intervalSeconds
-        refresh()
+        refresh(force: true) // 启动立即拉新数据，不被历史 lastUpdated 的 TTL 挡住
         scheduleTimer()
     }
 
@@ -46,9 +38,9 @@ final class UsageStore: ObservableObject {
         scheduleTimer()
     }
 
-    /// TTL 缓存：60s 内不重复触发 claude CLI（启动昂贵，约 1–3s）
-    /// 手动点刷新按钮 force=true 强制绕过
-    private let cacheTTL: TimeInterval = 60
+    /// TTL 缓存：仅用于 popover 反复开关时的防抖（togglePopover 走 force=false）。
+    /// 定时器与启动走 force=true：timer 间隔本身即节流，HTTP 接口便宜(~1s)，不必再被 TTL 挡。
+    private let cacheTTL: TimeInterval = 30
 
     func refresh(force: Bool = false) {
         Task { await reload(force: force) }
@@ -56,16 +48,16 @@ final class UsageStore: ObservableObject {
 
     private func scheduleTimer() {
         timer?.invalidate()
-        // 定时器走非 force 路径；若距上次刷新不足 TTL 会自动跳过
+        // 定时器间隔本身即节流，强制刷新；否则间隔==TTL 的临界会让定时刷新被吃掉
         let t = Timer(timeInterval: TimeInterval(intervalSeconds), repeats: true) { [weak self] _ in
-            self?.refresh(force: false)
+            self?.refresh(force: true)
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
     private func reload(force: Bool) async {
-        // TTL 命中：直接返回缓存，不点亮 spinner、不动 claude CLI
+        // TTL 仅用于 popover 反复开关防抖；启动/定时走 force=true 必刷
         if !force, let last = lastUpdated, Date().timeIntervalSince(last) < cacheTTL {
             return
         }
@@ -82,9 +74,8 @@ final class UsageStore: ObservableObject {
         isPaused = false
         pausedReason = nil
 
-        async let u = Task.detached { UsageService.fetch() }.value
-        async let t = Task.detached { JSONLAggregator.aggregate() }.value
-        let (newUsage, newTokens) = await (u, t)
+        // 百分比来自 HTTP 接口(~1s)，纯网络、几乎零内存，不扫任何本地会话文件
+        let newUsage = await Task.detached { UsageService.fetch() }.value
 
         // 解析失败时保留上次百分比，避免菜单栏闪回 --%
         var merged = newUsage
@@ -101,7 +92,6 @@ final class UsageStore: ObservableObject {
             merged.weekSonnetResetText = self.usage.weekSonnetResetText
         }
         self.usage = merged
-        self.tokens = newTokens
         self.lastUpdated = Date()
         persist()
     }
@@ -110,9 +100,6 @@ final class UsageStore: ObservableObject {
         let ud = UserDefaults.standard
         if let data = try? JSONEncoder().encode(usage) {
             ud.set(data, forKey: usageKey)
-        }
-        if let data = try? JSONEncoder().encode(tokens) {
-            ud.set(data, forKey: tokensKey)
         }
         if let t = lastUpdated {
             ud.set(t, forKey: lastUpdatedKey)
