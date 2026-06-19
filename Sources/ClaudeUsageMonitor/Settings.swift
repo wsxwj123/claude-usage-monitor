@@ -1,7 +1,7 @@
 import Foundation
 
 struct AppSettings: Codable, Equatable {
-    var refreshIntervalSeconds: Int = 60
+    var refreshIntervalSeconds: Int = 180
     var menubarShowPercent: Bool = true
     var menubarMetric: MenubarMetric = .session
     var showSonnetWeek: Bool = true
@@ -27,12 +27,16 @@ final class SettingsStore: ObservableObject {
     private let key = "AppSettings.v1"
 
     init() {
+        var s: AppSettings
         if let data = UserDefaults.standard.data(forKey: key),
            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
-            self.settings = decoded
+            s = decoded
         } else {
-            self.settings = AppSettings()
+            s = AppSettings()
         }
+        // 迁移：低于 180s 的旧间隔会触发 /api/oauth/usage 激进限流，强制抬到安全线
+        if s.refreshIntervalSeconds < 180 { s.refreshIntervalSeconds = 180 }
+        self.settings = s
     }
 
     private func save() {

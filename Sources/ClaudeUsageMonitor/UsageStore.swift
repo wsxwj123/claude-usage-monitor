@@ -10,7 +10,11 @@ final class UsageStore: ObservableObject {
     @Published private(set) var pausedReason: String?
 
     private var timer: Timer?
-    private var intervalSeconds: Int = 60
+    private var intervalSeconds: Int = 180
+
+    // 429 限流退避：连续限流时拉长重试间隔(180→360→720→900s 封顶)，避免死磕延长限流窗口
+    private var backoffUntil: Date?
+    private var consecutive429 = 0
 
     private let usageKey = "UsageStore.cachedUsage.v1"
     private let lastUpdatedKey = "UsageStore.lastUpdated.v1"
@@ -38,9 +42,9 @@ final class UsageStore: ObservableObject {
         scheduleTimer()
     }
 
-    /// TTL 缓存：仅用于 popover 反复开关时的防抖（togglePopover 走 force=false）。
-    /// 定时器与启动走 force=true：timer 间隔本身即节流，HTTP 接口便宜(~1s)，不必再被 TTL 挡。
-    private let cacheTTL: TimeInterval = 30
+    /// TTL 缓存：popover 反复开关防抖。设 120s(<最小轮询间隔 180s)，
+    /// 既不误挡定时刷新，又能抑制频繁开关 popover 时的重复请求。
+    private let cacheTTL: TimeInterval = 120
 
     func refresh(force: Bool = false) {
         Task { await reload(force: force) }
@@ -48,18 +52,24 @@ final class UsageStore: ObservableObject {
 
     private func scheduleTimer() {
         timer?.invalidate()
-        // 定时器间隔本身即节流，强制刷新；否则间隔==TTL 的临界会让定时刷新被吃掉
+        // 定时器走 force=false：受限流退避节制；TTL(120s)<间隔(≥180s) 保证不被 TTL 误挡
         let t = Timer(timeInterval: TimeInterval(intervalSeconds), repeats: true) { [weak self] _ in
-            self?.refresh(force: true)
+            self?.refresh(force: false)
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
     private func reload(force: Bool) async {
-        // TTL 仅用于 popover 反复开关防抖；启动/定时走 force=true 必刷
-        if !force, let last = lastUpdated, Date().timeIntervalSince(last) < cacheTTL {
-            return
+        // 非强制(定时器/popover)：TTL 防抖 + 限流退避，任一命中都跳过本次请求(保留上次值)。
+        // 手动刷新按钮 force=true 可绕过二者主动试探。
+        if !force {
+            if let last = lastUpdated, Date().timeIntervalSince(last) < cacheTTL {
+                return
+            }
+            if let until = backoffUntil, Date() < until {
+                return
+            }
         }
 
         isRefreshing = true
@@ -77,7 +87,17 @@ final class UsageStore: ObservableObject {
         // 百分比来自 HTTP 接口(~1s)，纯网络、几乎零内存，不扫任何本地会话文件
         let newUsage = await Task.detached { UsageService.fetch() }.value
 
-        // 解析失败时保留上次百分比，避免菜单栏闪回 --%
+        // 限流退避：连续 429 → 180→360→720→900s(封顶15min)；成功则清零
+        if newUsage.isRateLimited {
+            consecutive429 += 1
+            let delay = min(180.0 * pow(2.0, Double(consecutive429 - 1)), 900)
+            backoffUntil = Date().addingTimeInterval(delay)
+        } else if newUsage.error == nil {
+            consecutive429 = 0
+            backoffUntil = nil
+        }
+
+        // 解析失败/限流时保留上次百分比，避免菜单栏闪回 --%
         var merged = newUsage
         if merged.sessionPercent == nil, let last = self.usage.sessionPercent {
             merged.sessionPercent = last
@@ -92,7 +112,10 @@ final class UsageStore: ObservableObject {
             merged.weekSonnetResetText = self.usage.weekSonnetResetText
         }
         self.usage = merged
-        self.lastUpdated = Date()
+        // 仅成功时推进 lastUpdated：限流/失败不污染"上次成功时间"与 TTL 判定
+        if newUsage.error == nil {
+            self.lastUpdated = Date()
+        }
         persist()
     }
 

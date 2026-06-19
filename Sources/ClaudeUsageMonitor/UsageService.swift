@@ -10,7 +10,13 @@ struct UsageSnapshot: Equatable, Codable {
     var rawOutput: String = ""
     var fetchedAt: Date = Date()
     var error: String?
+    var isRateLimited: Bool = false
 }
+
+/// Claude Code 版本号，用于 User-Agent。
+/// 缺 `User-Agent: claude-code/<ver>` 会让 /api/oauth/usage 落入激进限流桶 → 持续 429。
+/// 与本机 claude 同步即可，前缀 claude-code/ 是关键。
+let claudeCodeUA = "claude-code/2.1.179"
 
 enum UsageService {
     /// 官方限额百分比来自 GET https://api.anthropic.com/api/oauth/usage
@@ -33,6 +39,7 @@ enum UsageService {
         req.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        req.setValue(claudeCodeUA, forHTTPHeaderField: "User-Agent") // 关键：避免落入激进限流桶
 
         let sem = DispatchSemaphore(value: 0)
         var respData: Data?
@@ -57,7 +64,9 @@ enum UsageService {
         guard statusCode == 200, let data = respData else {
             switch statusCode {
             case 401: snap.error = "登录已过期，请在 Claude Code 中重新登录"
-            case 429: snap.error = "用量接口被限流，稍后自动重试"
+            case 429:
+                snap.error = "接口限流中，显示上次数据（已自动延长重试）"
+                snap.isRateLimited = true
             default:  snap.error = "用量接口 HTTP \(statusCode)"
             }
             return snap

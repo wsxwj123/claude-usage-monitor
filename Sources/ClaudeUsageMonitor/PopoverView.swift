@@ -100,7 +100,7 @@ struct PopoverView: View {
             if let err = usageStore.usage.error {
                 Text(err)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    .foregroundColor(usageStore.usage.isRateLimited ? .orange : .red)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -189,10 +189,9 @@ struct SettingsView: View {
                 Text("刷新间隔")
                 Spacer()
                 Picker("", selection: $settingsStore.settings.refreshIntervalSeconds) {
-                    Text("30 秒").tag(30)
-                    Text("1 分钟").tag(60)
-                    Text("2 分钟").tag(120)
+                    Text("3 分钟").tag(180)
                     Text("5 分钟").tag(300)
+                    Text("10 分钟").tag(600)
                 }
                 .labelsHidden()
                 .frame(width: 120)
