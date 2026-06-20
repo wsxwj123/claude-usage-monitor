@@ -100,7 +100,7 @@ struct PopoverView: View {
             if let err = usageStore.usage.error {
                 Text(err)
                     .font(.caption)
-                    .foregroundColor(usageStore.usage.isRateLimited ? .orange : .red)
+                    .foregroundColor(usageStore.usage.isDegraded ? .orange : .red)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

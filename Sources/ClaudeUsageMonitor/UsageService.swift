@@ -11,6 +11,7 @@ struct UsageSnapshot: Equatable, Codable {
     var fetchedAt: Date = Date()
     var error: String?
     var isRateLimited: Bool = false
+    var isDegraded: Bool = false   // 温和降级(限流/凭证刷新窗口)：UI 橙色提示而非红色报错
 }
 
 /// Claude Code 版本号，用于 User-Agent。
@@ -63,10 +64,15 @@ enum UsageService {
         }
         guard statusCode == 200, let data = respData else {
             switch statusCode {
-            case 401: snap.error = "登录已过期，请在 Claude Code 中重新登录"
+            case 401:
+                // 多为 OAuth accessToken 刷新窗口的临时过期(CLI 运行会刷新)，非真正登出。
+                // app 不能自己刷新(会轮转 refreshToken 弄挂 CLI 登录)，只能等 CLI 刷新后自愈。
+                snap.error = "凭证刷新中，显示上次数据（Claude Code 运行后自动恢复）"
+                snap.isDegraded = true
             case 429:
                 snap.error = "接口限流中，显示上次数据（已自动延长重试）"
                 snap.isRateLimited = true
+                snap.isDegraded = true
             default:  snap.error = "用量接口 HTTP \(statusCode)"
             }
             return snap
