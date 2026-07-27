@@ -107,9 +107,10 @@ final class UsageStore: ObservableObject {
             merged.weekAllPercent = last
             merged.weekAllResetText = self.usage.weekAllResetText
         }
-        if merged.weekSonnetPercent == nil, let last = self.usage.weekSonnetPercent {
-            merged.weekSonnetPercent = last
-            merged.weekSonnetResetText = self.usage.weekSonnetResetText
+        if merged.weekScopedPercent == nil, let last = self.usage.weekScopedPercent {
+            merged.weekScopedPercent = last
+            merged.weekScopedResetText = self.usage.weekScopedResetText
+            merged.weekScopedLabel = self.usage.weekScopedLabel
         }
         self.usage = merged
         // 仅成功时推进 lastUpdated：限流/失败不污染"上次成功时间"与 TTL 判定

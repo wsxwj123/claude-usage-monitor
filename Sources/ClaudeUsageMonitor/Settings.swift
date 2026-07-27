@@ -4,16 +4,16 @@ struct AppSettings: Codable, Equatable {
     var refreshIntervalSeconds: Int = 180
     var menubarShowPercent: Bool = true
     var menubarMetric: MenubarMetric = .session
-    var showSonnetWeek: Bool = true
+    var showScopedWeek: Bool = true
 
     enum MenubarMetric: String, Codable, CaseIterable {
-        case all, session, weekAll, weekSonnet
+        case all, session, weekAll, weekScoped
         var label: String {
             switch self {
             case .all: return "全部显示（5h + 周）"
             case .session: return "5小时窗口"
             case .weekAll: return "周（全模型）"
-            case .weekSonnet: return "周（Sonnet）"
+            case .weekScoped: return "周（单模型）"
             }
         }
     }

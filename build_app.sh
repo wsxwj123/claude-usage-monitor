@@ -26,8 +26,8 @@ cat > "${APP_DIR}/Contents/Info.plist" <<EOF
     <key>CFBundleExecutable</key>      <string>${APP_NAME}</string>
     <key>CFBundleIdentifier</key>      <string>app.claude-usage-monitor</string>
     <key>CFBundleIconFile</key>        <string>AppIcon</string>
-    <key>CFBundleVersion</key>         <string>0.2.5</string>
-    <key>CFBundleShortVersionString</key><string>0.2.5</string>
+    <key>CFBundleVersion</key>         <string>0.2.6</string>
+    <key>CFBundleShortVersionString</key><string>0.2.6</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>  <string>13.0</string>
     <key>LSUIElement</key>             <true/>

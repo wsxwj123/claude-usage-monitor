@@ -86,13 +86,13 @@ struct PopoverView: View {
                               reset: usageStore.usage.weekAllResetText,
                               color: tintForPercent(usageStore.usage.weekAllPercent))
             }
-            if settingsStore.settings.showSonnetWeek {
+            if settingsStore.settings.showScopedWeek {
                 HStack {
-                    Text("Sonnet 本周").font(.caption).foregroundColor(.secondary)
+                    Text("\(usageStore.usage.weekScopedLabel ?? "单模型") 本周").font(.caption).foregroundColor(.secondary)
                     Spacer()
-                    Text(Fmt.percent(usageStore.usage.weekSonnetPercent))
+                    Text(Fmt.percent(usageStore.usage.weekScopedPercent))
                         .font(.caption).bold()
-                    if let r = usageStore.usage.weekSonnetResetText {
+                    if let r = usageStore.usage.weekScopedResetText {
                         Text("· 重置 \(r)").font(.caption2).foregroundColor(.secondary)
                     }
                 }
@@ -173,7 +173,7 @@ struct SettingsView: View {
                 }
             }
             Toggle("菜单栏显示百分比数字", isOn: $settingsStore.settings.menubarShowPercent)
-            Toggle("显示本周 Sonnet 单独占比", isOn: $settingsStore.settings.showSonnetWeek)
+            Toggle("显示本周单模型占比", isOn: $settingsStore.settings.showScopedWeek)
 
             Divider()
 

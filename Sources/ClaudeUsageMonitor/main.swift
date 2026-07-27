@@ -73,8 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             cells.append(Cell(label: "5h", percent: usageStore.usage.sessionPercent))
         case .weekAll:
             cells.append(Cell(label: "周", percent: usageStore.usage.weekAllPercent))
-        case .weekSonnet:
-            cells.append(Cell(label: "Son", percent: usageStore.usage.weekSonnetPercent))
+        case .weekScoped:
+            cells.append(Cell(label: usageStore.usage.weekScopedLabel ?? "模型",
+                              percent: usageStore.usage.weekScopedPercent))
         case .all:
             cells.append(Cell(label: "5h", percent: usageStore.usage.sessionPercent))
             cells.append(Cell(label: "周",  percent: usageStore.usage.weekAllPercent))

@@ -5,8 +5,9 @@ struct UsageSnapshot: Equatable, Codable {
     var sessionResetText: String?
     var weekAllPercent: Int?
     var weekAllResetText: String?
-    var weekSonnetPercent: Int?
-    var weekSonnetResetText: String?
+    var weekScopedPercent: Int?
+    var weekScopedResetText: String?
+    var weekScopedLabel: String?   // 服务端当前限额的模型名(Fable/Sonnet/Opus…)，跟随服务端不写死
     var rawOutput: String = ""
     var fetchedAt: Date = Date()
     var error: String?
@@ -96,9 +97,14 @@ enum UsageService {
             snap.weekAllPercent = roundPercent(sd["utilization"])
             snap.weekAllResetText = formatReset(sd["resets_at"] as? String)
         }
-        if let son = json["seven_day_sonnet"] as? [String: Any] {
-            snap.weekSonnetPercent = roundPercent(son["utilization"])
-            snap.weekSonnetResetText = formatReset(son["resets_at"] as? String)
+        // 按模型的周限额：读 limits 里的 weekly_scoped，模型名取自 scope.model.display_name。
+        // 不读 seven_day_sonnet 等固定字段——服务端会随主力模型变更(现已是 Fable，sonnet 字段恒 null)。
+        if let limits = json["limits"] as? [[String: Any]],
+           let scoped = limits.first(where: { ($0["kind"] as? String) == "weekly_scoped" }) {
+            snap.weekScopedPercent = roundPercent(scoped["percent"])
+            snap.weekScopedResetText = formatReset(scoped["resets_at"] as? String)
+            snap.weekScopedLabel = ((scoped["scope"] as? [String: Any])?["model"]
+                as? [String: Any])?["display_name"] as? String
         }
     }
 
