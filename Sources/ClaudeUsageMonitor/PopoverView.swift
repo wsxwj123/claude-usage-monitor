@@ -17,7 +17,7 @@ struct PopoverView: View {
             footer
         }
         .padding(14)
-        .frame(width: 340)
+        .frame(width: 420)   // 三栏(5h/周/单模型)并排，窄了"重置 X月X日 HH:MM"会折行
         .sheet(isPresented: $showSettings) {
             SettingsView(settingsStore: settingsStore)
         }
@@ -85,16 +85,12 @@ struct PopoverView: View {
                               percent: usageStore.usage.weekAllPercent,
                               reset: usageStore.usage.weekAllResetText,
                               color: tintForPercent(usageStore.usage.weekAllPercent))
-            }
-            if settingsStore.settings.showScopedWeek {
-                HStack {
-                    Text("\(usageStore.usage.weekScopedLabel ?? "单模型") 本周").font(.caption).foregroundColor(.secondary)
-                    Spacer()
-                    Text(Fmt.percent(usageStore.usage.weekScopedPercent))
-                        .font(.caption).bold()
-                    if let r = usageStore.usage.weekScopedResetText {
-                        Text("· 重置 \(r)").font(.caption2).foregroundColor(.secondary)
-                    }
+                if settingsStore.settings.showScopedWeek {
+                    Divider().frame(height: 80)
+                    percentColumn(title: usageStore.usage.weekScopedLabel ?? "单模型",
+                                  percent: usageStore.usage.weekScopedPercent,
+                                  reset: usageStore.usage.weekScopedResetText,
+                                  color: tintForPercent(usageStore.usage.weekScopedPercent))
                 }
             }
             if let err = usageStore.usage.error {
